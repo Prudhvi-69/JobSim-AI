@@ -648,19 +648,20 @@ function RecruiterDashboard({ accessToken, user, onSignOut }: DashboardProps) {
 }
 
 function App() {
+  const hasStoredSession = localStorage.getItem('placeprep_has_session') === 'true';
   const [session, setSession] = useState<{ accessToken: string; user: SessionUser } | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [checkingSession, setCheckingSession] = useState(hasStoredSession);
 
   useEffect(() => {
+    if (!hasStoredSession) return;
     let active = true;
 
     async function restoreSession() {
-      if (localStorage.getItem('placeprep_has_session') !== 'true') {
-        setCheckingSession(false);
-        return;
-      }
       try {
-        const response = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include', signal: controller.signal });
+        clearTimeout(timeout);
         if (!response.ok) {
           localStorage.removeItem('placeprep_has_session');
           return;
@@ -675,7 +676,10 @@ function App() {
         const profile = await readJsonResponse<{ roles?: string[] }>(profileResponse, {});
         if (active) setSession({ accessToken: result.accessToken, user: { ...result.user, roles: profile.roles } });
       } catch {
-        if (active) setSession(null);
+        if (active) {
+          localStorage.removeItem('placeprep_has_session');
+          setSession(null);
+        }
       } finally {
         if (active) setCheckingSession(false);
       }
